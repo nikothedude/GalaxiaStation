@@ -6,4 +6,5 @@
 		/obj/item/stack/cable_coil = 3,
 		/datum/stock_part/servo = 1,
 		/datum/stock_part/capacitor = 1,
+		/datum/stock_part/scanning_module = 1,
 	)

@@ -11,6 +11,12 @@
 	active_power_usage = 340
 	var/enter_message = span_notice("<b>You feel cool air surround you. You go numb as your senses turn inward.<b>")
 	var/last_stasis_sound = FALSE
+	/// If SCANNER_CONDENSED, health scans will be in a condensed format. Caused by lowgrade parts.
+	var/condensed_mode = SCANNER_CONDENSED
+	/// If TRUE, health scans will act as if from a advanced health analyzer.
+	var/advanced_scan = FALSE
+	/// If TRUE, scanning the health of the occupant will act as if in a health analyzer's wound mode.
+	var/wound_mode = FALSE
 	fair_market_price = 10
 	payment_department = ACCOUNT_MED
 
@@ -19,9 +25,10 @@
 
 /obj/machinery/stasissleeper/examine(mob/user)
 	. = ..()
-	. += span_notice("Alt-click to [state_open ? "close" : "open"] the machine.")
-	. += span_notice("A light blinking on the side indicates that it is [occupant ? "occupied" : "vacant"].")
-	. += span_notice("It has a screen on the side displaying the vitals of the occupant. Interact to read it.")
+	. += span_notice("Alt-click to toggle between wound-scanning and health-scanning modes.")
+	. += span_notice("It is currently set to [span_notice("[wound_mode ? "wound mode" : "health mode"]")].")
+	. += span_notice("A light blinking on the side indicates that it is [span_notice("[occupant ? "occupied" : "vacant"]")].")
+	. += span_notice("It has a screen on the side displaying the vitals of the occupant. Right click to read it.")
 
 /obj/machinery/stasissleeper/open_machine(drop = TRUE, density_to_set = FALSE)
 	if(!state_open && !panel_open)
@@ -30,18 +37,21 @@
 			play_power_sound()
 		playsound(src, 'sound/machines/click.ogg', 60, TRUE)
 		flick("[initial(icon_state)]-anim", src)
-		..()
+		. = ..()
 
 /obj/machinery/stasissleeper/close_machine(atom/movable/target, density_to_set = TRUE)
 	if((isnull(target) || istype(target)) && state_open && !panel_open)
 		playsound(src, 'sound/machines/click.ogg', 60, TRUE)
 		flick("[initial(icon_state)]-anim", src)
-		..(target)
+		. = ..(target)
 		var/mob/living/mob_occupant = occupant
 		if(occupant)
 			play_power_sound()
 		if(mob_occupant && mob_occupant.stat != DEAD)
 			to_chat(mob_occupant, "[enter_message]")
+
+		if (stasis_running())
+			chill_out(mob_occupant)
 
 /obj/machinery/stasissleeper/proc/play_power_sound()
 	var/_running = stasis_running()
@@ -52,18 +62,6 @@
 		else
 			playsound(src, 'sound/machines/synth_no.ogg', 50, TRUE, frequency = sound_freq)
 		last_stasis_sound = _running
-
-/obj/machinery/stasissleeper/AltClick(mob/user)
-	if(!user.can_perform_action(src, ALLOW_SILICON_REACH))
-		return
-	if(!panel_open)
-		user.visible_message(span_notice("\The [src] [state_open ? "hisses as it seals shut." : "hisses as it swings open."]."), \
-						span_notice("You [state_open ? "close" : "open"] \the [src]."), \
-						span_hear("You hear a nearby machine [state_open ? "seal shut." : "swing open."]."))
-	if(state_open)
-		close_machine()
-	else
-		open_machine()
 
 /obj/machinery/stasissleeper/Exited(atom/movable/AM, atom/newloc)
 	if(!state_open && AM == occupant)
@@ -89,7 +87,7 @@
 	play_power_sound()
 
 /obj/machinery/stasissleeper/proc/chill_out(mob/living/target)
-	if(target != occupant)
+	if(!isnull(target) && target != occupant)
 		return
 	var/freq = rand(24750, 26550)
 	playsound(src, 'sound/effects/spray.ogg', 5, TRUE, 2, frequency = freq)
@@ -104,9 +102,8 @@
 	if(target == occupant)
 		use_power = IDLE_POWER_USE
 
-
 /obj/machinery/stasissleeper/process()
-	if( !( occupant && isliving(occupant) && check_nap_violations() ) )
+	if(!(occupant && isliving(occupant) && check_nap_violations()))
 		use_power = IDLE_POWER_USE
 		return
 	var/mob/living/L_occupant = occupant
@@ -121,10 +118,10 @@
 	if(.)
 		return
 	if(occupant)
-		to_chat(user, span_warning("[src] is currently occupied!"))
+		balloon_alert(user, "occupied!")
 		return
 	if(state_open)
-		to_chat(user, span_warning("[src] must be closed to [panel_open ? "close" : "open"] its maintenance hatch!"))
+		balloon_alert(user, "close it first!")
 		return
 	default_deconstruction_screwdriver(user, "[initial(icon_state)]-o", initial(icon_state), used_item)
 
@@ -147,25 +144,37 @@
 		visible_message(span_notice("[usr] pries open [src]."), span_notice("You pry open [src]."))
 		open_machine()
 
+/obj/machinery/stasissleeper/AltClick(mob/user)
+	if(!is_operational || !user.can_perform_action(src, ALLOW_SILICON_REACH))
+		return FALSE
+
+	wound_mode = !wound_mode
+	var/mode_string = (wound_mode ? "wounds" : "health")
+	balloon_alert(user, "now scanning [mode_string]")
+	return TRUE
+
 /obj/machinery/stasissleeper/attack_hand(mob/user)
-	if(occupant)
-		if(occupant == user)
-			to_chat(user, span_notice("You read the vitals readout on the inside of the stasis unit."))
-		else
-			to_chat(user, span_notice("You read the vitals readout on the side of the stasis unit."))
-		healthscan(user, occupant, SCANNER_VERBOSE, TRUE)
+	if(!is_operational || !user.can_perform_action(src, ALLOW_SILICON_REACH))
+		return FALSE
+	if (state_open)
+		close_machine()
 	else
-		to_chat(user, span_warning("The vitals readout is blank, the stasis unit is unoccupied!"))
+		open_machine()
+	return TRUE
 
 /obj/machinery/stasissleeper/attack_hand_secondary(mob/user)
-	if(occupant)
-		if(occupant == user)
-			to_chat(user, span_notice("You read the bloodstream readout on the inside of the stasis unit."))
+	if(!is_operational || !user.can_perform_action(src, ALLOW_SILICON_REACH))
+		return FALSE
+	if (occupant)
+		if (wound_mode)
+			balloon_alert(user, "scanning wounds")
+			woundscan(user, occupant)
 		else
-			to_chat(user, span_notice("You read the bloodstream readout on the side of the stasis unit."))
+			balloon_alert(user, "scanning health")
+			healthscan(user, occupant, mode = condensed_mode, advanced = advanced_scan)
 		chemscan(user, occupant)
 	else
-		to_chat(user, span_warning("The bloodstream readout is blank, the stasis unit is unoccupied!"))
+		balloon_alert(user, "no occupant!")
 	return SECONDARY_ATTACK_CANCEL_ATTACK_CHAIN
 
 /obj/machinery/stasissleeper/attack_ai(mob/user)
@@ -176,3 +185,67 @@
 
 /obj/machinery/stasissleeper/attack_ai_secondary(mob/user) // this works for borgs and ais shrug
 	attack_hand_secondary(user)
+
+/obj/machinery/stasissleeper/MouseDrop_T(mob/living/target, mob/living/user) // pasted from disposal bin code
+	if(istype(target))
+		stuff_mob_in(target, user)
+
+/obj/machinery/stasissleeper/proc/stuff_mob_in(mob/living/target, mob/living/user)
+	if(!user.can_perform_action(src))
+		return FALSE
+	if(!isturf(user.loc)) //No magically doing it from inside closets
+		return FALSE
+	if(target.buckled || target.has_buckled_mobs())
+		return FALSE
+	if(target.mob_size > MOB_SIZE_HUMAN)
+		to_chat(user, span_warning("[target] doesn't fit inside [src]!"))
+		return FALSE
+	if (occupant)
+		balloon_alert(user, "occupied!")
+		return FALSE
+	add_fingerprint(user)
+	if (Adjacent(target))
+		close_machine(target)
+		return TRUE
+
+	if(user == target)
+		user.visible_message(span_warning("[user] starts climbing into [src]."), span_notice("You start climbing into [src]..."))
+	else
+		target.visible_message(span_danger("[user] starts putting [target] into [src]."), span_userdanger("[user] starts putting you into [src]!"))
+
+	if(do_after(user, 2 SECONDS, target))
+		if (!loc)
+			return FALSE
+		if(user == target)
+			user.visible_message(span_warning("[user] climbs into [src]."), span_notice("You climb into [src]."))
+			. = TRUE
+		else
+			target.visible_message(span_danger("[user] places [target] in [src]."), span_userdanger("[user] places you in [src]."))
+			log_combat(user, target, "stuffed", addition="into [src]")
+			target.LAssailant = WEAKREF(user)
+			. = TRUE
+		close_machine(target)
+		update_appearance()
+
+/obj/machinery/stasissleeper/relaymove(mob/living/user, direction)
+	if (user == occupant)
+		container_resist_act()
+
+/obj/machinery/stasissleeper/RefreshParts()
+	. = ..()
+
+	if(!length(component_parts))
+		return
+	for (var/obj/item/stock_parts/scanning_module/scanner in component_parts)
+		if (scanner.rating <= 1)
+			condensed_mode = SCANNER_CONDENSED
+			advanced_scan = FALSE
+		else if (scanner.rating == 2)
+			condensed_mode = SCANNER_VERBOSE
+			advanced_scan = FALSE
+		else if (scanner.rating >= 3)
+			condensed_mode = SCANNER_VERBOSE
+			advanced_scan = TRUE
+
+		break
+
