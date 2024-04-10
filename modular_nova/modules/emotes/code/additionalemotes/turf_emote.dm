@@ -1,6 +1,6 @@
 /mob/living
-	var/obj/owned_turf
-	var/list/allowed_turfs = list()
+	/// Our currently deployed mark turf structure, given by the turf emote.
+	var/obj/structure/mark_turf/owned_mark_turf_structure
 
 /datum/emote/living/mark_turf
 	key = "turf"
@@ -12,6 +12,8 @@
 /datum/emote/living/mark_turf/run_emote(mob/living/user, params, type_override, intentional)
 	. = ..()
 	var/mob/living/carbon/human/human_user = user
+
+	var/list/obj/structure/mark_turf/allowed_turf_structures = user.get_allowed_turf_structures()
 
 	if(ishuman(user))
 		//feet
@@ -159,6 +161,85 @@
 		RegisterSignal(user, COMSIG_MOVABLE_MOVED, PROC_REF(turf_owner), override = TRUE)
 
 	return ..()
+
+/mob/living/proc/get_allowed_turf_structures()
+	RETURN_TYPE(/list)
+
+	var/list/obj/structure/mark_turf/allowed_structures = list()
+
+
+
+	return allowed_structures
+
+/mob/living/carbon/human/get_allowed_turf_structures()
+	var/list/obj/structure/mark_turf/allowed_structures = ..()
+
+	var/taur_type = get_taur_mode()
+	if (!taur_type)
+		if (bodyshape & BODYSHAPE_DIGITIGRADE)
+			allowed_structures += list(/obj/structure/mark_turf/pawprint, /obj/structure/mark_turf/hoofprint, /obj/structure/mark_turf)
+
+	//feet
+	if(!(human_user.bodyshape & BODYSHAPE_DIGITIGRADE) && !(human_user.dna.species.mutant_bodyparts["taur"]))
+		user.allowed_turfs += "footprint"
+
+	if((human_user.bodyshape & BODYSHAPE_DIGITIGRADE) || human_user.dna.species.mutant_bodyparts["taur"])
+		user.allowed_turfs += list("pawprint", "hoofprint", "clawprint")
+
+	//species & taurs
+	if(islizard(user) || HAS_TRAIT(user, TRAIT_ASH_ASPECT))
+		user.allowed_turfs += "smoke"
+		user.allowed_turfs -= list("pawprint", "hoofprint")
+
+	if(isplasmaman(user))
+		if(human_user.w_uniform && istype(human_user.w_uniform, /obj/item/clothing/under/plasmaman))
+			user.allowed_turfs += "holoseat"
+
+	if(isroundstartslime(user) || isslimeperson(user) || isjellyperson(user))
+		user.allowed_turfs += "slime"
+
+	if(isxenohybrid(user))
+		user.allowed_turfs += "xenoresin"
+
+	if(isinsect(user) || HAS_TRAIT(user, TRAIT_WEBBING_ASPECT))
+		user.allowed_turfs += "web"
+
+	if(isaquatic(user) || isakula(user) || HAS_TRAIT(user, TRAIT_WATER_ASPECT))
+		user.allowed_turfs += "water"
+
+	if(ispodperson(user) || ispodweak(user) || HAS_TRAIT(user, TRAIT_FLORAL_ASPECT))
+		user.allowed_turfs += "vines"
+
+	if(issynthetic(user))
+		if(human_user.dna.species.mutant_bodyparts["taur"])
+			user.allowed_turfs += "holobed" //taurs get the holobed instead
+		else
+			user.allowed_turfs += "holoseat"
+
+	//wings
+	if((istype(user.get_organ_slot(ORGAN_SLOT_WINGS), /obj/item/organ/external/wings/moth)) || HAS_TRAIT(user, TRAIT_SPARKLE_ASPECT))
+		user.allowed_turfs += "dust" //moth's dust ✨
+
+	//body parts
+	if(istype(user.get_organ_slot(ORGAN_SLOT_EXTERNAL_TAIL), /obj/item/organ/external/tail))
+		var/name = human_user.dna.species.mutant_bodyparts["tail"][MUTANT_INDEX_NAME]
+		var/datum/sprite_accessory/tails/tail = GLOB.sprite_accessories["tail"][name]
+		if(tail.fluffy)
+			user.allowed_turfs += "tails"
+
+	var/taur_mode = human_user.get_taur_mode()
+	if(taur_mode & STYLE_TAUR_SNAKE)
+		user.allowed_turfs -= list("pawprint", "hoofprint", "clawprint")
+		user.allowed_turfs += "constrict"
+
+	//clothing
+	var/obj/item/shoes = user.get_item_by_slot(ITEM_SLOT_FEET)
+	if(istype(shoes, /obj/item/clothing/shoes))
+		if(!human_user.dna.species.mutant_bodyparts["taur"])
+			user.allowed_turfs += "shoeprint"
+
+
+	return allowed_structures
 
 /datum/emote/living/mark_turf/select_message_type(mob/living/user, intentional)
 	. = ..()
