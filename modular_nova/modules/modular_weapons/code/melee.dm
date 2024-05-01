@@ -28,3 +28,53 @@
 // This is here so that people can't buy the Sabres and craft them into powercrepes
 /datum/crafting_recipe/food/powercrepe
 	blacklist = list(/obj/item/melee/sabre/cargo)
+
+#define STUN_STAFF_BLOCK_CHANCE 20
+/obj/item/melee/baton/security/staff
+	name = "stun staff"
+	desc = "A double sided stun baton for more subduing the more troublesome criminals."
+
+	force = 12 // only slightly stronger
+	cooldown = 1.8 SECONDS // versus 2.5 seconds, somewhat better
+
+	w_class = WEIGHT_CLASS_BULKY
+
+	light_range = 3 // its 2 batons
+
+/obj/item/melee/baton/security/staff/Initialize(mapload)
+	. = ..()
+
+	AddComponent(
+		/datum/component/two_handed,
+		force_unwielded = 4,
+		force_wielded = 12,
+//		icon_wielded = '',
+		wield_callback = CALLBACK(src, PROC_REF(on_wielded)),
+		unwield_callback = CALLBACK(src, PROC_REF(on_unwielded))
+	)
+	AddComponent(/datum/component/jousting, knockdown_chance_per_tile = 10)
+
+/obj/item/melee/baton/security/staff/proc/on_wielded()
+	block_chance += STUN_STAFF_BLOCK_CHANCE
+
+/obj/item/melee/baton/security/staff/proc/on_unwielded()
+	block_chance -= STUN_STAFF_BLOCK_CHANCE
+
+/obj/item/melee/baton/security/staff/baton_attack(mob/living/target, mob/living/user, modifiers)
+	if (LAZYACCESS(modifiers, LEFT_CLICK))
+		var/obj/item/bodypart/other_hand = user.has_hand_for_held_index(user.get_inactive_hand_index())
+		if (user.get_inactive_held_item() || other_hand)
+			balloon_alert(user, "use both hands!")
+			return BATON_ATTACK_DONE
+
+	return ..()
+
+#undef STUN_STAFF_BLOCK_CHANCE
+
+/obj/item/melee/baton/security/pike
+	name = "stun pike"
+	desc = "An oversized stun baton, made long enough to attack at a distance. Perfect for riot control."
+
+	cooldown = 3.5 SECONDS // versus 2.5
+
+	range = 2 // this doesnt seem like much, but it creates the potential for lots of schenanigans
